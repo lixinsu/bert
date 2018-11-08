@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ipdb
 import collections
+import json
 import csv
 import os
 import modeling
@@ -174,6 +176,49 @@ class DataProcessor(object):
         lines.append(line)
       return lines
 
+  @classmethod
+  def _read_json(cls, input_file):
+    return [json.loads(line) for line in tf.gfile.Open(input_file)]
+
+
+class SogouProcessor(DataProcessor):
+  """Processor for the Sogou data set."""
+
+  def __init__(self):
+    self.language = "zh"
+
+  def get_train_examples(self, data_dir):
+    """See base class."""
+    lines = self._read_json(
+        os.path.join(data_dir,
+                  "qp-train.json" ))
+    examples = []
+    for (i, line) in enumerate(lines):
+      guid = "train-%d" % (i)
+      text_a = tokenization.convert_to_unicode(''.join(line['passage']))
+      text_b = tokenization.convert_to_unicode(''.join(line['question']))
+      label = tokenization.convert_to_unicode(str(line['label']))
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+    return examples
+
+  def get_dev_examples(self, data_dir):
+    """See base class."""
+    lines = self._read_json(os.path.join(data_dir, "qp-dev.json"))
+    examples = []
+    for (i, line) in enumerate(lines):
+      guid = "dev-%d" % (i)
+      text_a = tokenization.convert_to_unicode(''.join(line['passage']))
+      text_b = tokenization.convert_to_unicode(''.join(line['question']))
+      label = tokenization.convert_to_unicode(str(line['label']))
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+    return examples
+
+  def get_labels(self):
+    """See base class."""
+    return ["0", "1"]
+
 
 class XnliProcessor(DataProcessor):
   """Processor for the XNLI data set."""
@@ -221,6 +266,40 @@ class XnliProcessor(DataProcessor):
   def get_labels(self):
     """See base class."""
     return ["contradiction", "entailment", "neutral"]
+
+
+
+class QnliProcessor(DataProcessor):
+  """Processor for the MultiNLI data set (GLUE version)."""
+
+  def get_train_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+  def get_dev_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_tsv(os.path.join(data_dir, "dev.tsv")),
+        "dev")
+
+  def get_labels(self):
+    """See base class."""
+    return ["entailment", "not_entailment"]
+
+  def _create_examples(self, lines, set_type):
+    """Creates examples for the training and dev sets."""
+    examples = []
+    for (i, line) in enumerate(lines):
+      if i == 0:
+        continue
+      guid = "%s-%s" % (set_type, tokenization.convert_to_unicode(line[0]))
+      text_a = tokenization.convert_to_unicode(line[2])
+      text_b = tokenization.convert_to_unicode(line[1])
+      label = tokenization.convert_to_unicode(line[-1])
+      examples.append(
+          InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+    return examples
 
 
 class MnliProcessor(DataProcessor):
@@ -615,14 +694,17 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
   return input_fn
 
 
-def main(_):
+def run_main(_):
+
   tf.logging.set_verbosity(tf.logging.INFO)
 
   processors = {
+      "qnli": QnliProcessor,
       "cola": ColaProcessor,
       "mnli": MnliProcessor,
       "mrpc": MrpcProcessor,
       "xnli": XnliProcessor,
+      "sogou": SogouProcessor,
   }
 
   if not FLAGS.do_train and not FLAGS.do_eval:
@@ -646,18 +728,18 @@ def main(_):
   processor = processors[task_name]()
 
   label_list = processor.get_labels()
-
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
 
   tpu_cluster_resolver = None
-  if FLAGS.use_tpu and FLAGS.tpu_name:
-    tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-        FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
+  #if FLAGS.use_tpu and FLAGS.tpu_name:
+  #  tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+  #      FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
 
-  is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
+  #is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
+  is_per_host = False
   run_config = tf.contrib.tpu.RunConfig(
-      cluster=tpu_cluster_resolver,
+      #cluster=tpu_cluster_resolver,
       master=FLAGS.master,
       model_dir=FLAGS.output_dir,
       save_checkpoints_steps=FLAGS.save_checkpoints_steps,
@@ -751,4 +833,4 @@ if __name__ == "__main__":
   flags.mark_flag_as_required("vocab_file")
   flags.mark_flag_as_required("bert_config_file")
   flags.mark_flag_as_required("output_dir")
-  tf.app.run()
+  tf.app.run(run_main)

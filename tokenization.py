@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ipdb
 import collections
 import unicodedata
 import six
@@ -141,6 +142,7 @@ class BasicTokenizer(object):
     # and generally don't have any Chinese data in them (there are Chinese
     # characters in the vocabulary because Wikipedia does have some Chinese
     # words in the English Wikipedia.).
+
     text = self._tokenize_chinese_chars(text)
 
     orig_tokens = whitespace_tokenize(text)
